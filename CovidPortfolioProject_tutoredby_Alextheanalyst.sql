@@ -1,0 +1,147 @@
+--Viewing data
+Select *
+from [Portfolio Project]..CovidVaccinations
+order by 3,4
+
+Select *
+from [Portfolio Project]..CovidDeaths
+where continent is not null
+order by 3,4
+
+--Select Data that we are going to be using
+Select location,date,total_cases,new_cases,total_deaths,population
+From [Portfolio Project]..CovidDeaths
+where location='India'
+
+--Looking at total cases vs total deaths
+Select location,date,total_cases,total_deaths,(total_deaths/total_cases)*100 as percent_deaths
+From [Portfolio Project]..CovidDeaths
+where location='India'
+
+
+----Looking at total cases vs the population
+Select location,date,total_cases,population,(total_cases/population)*100 as percent_cases
+From [Portfolio Project]..CovidDeaths
+where location='India'
+
+--Looking at countries with highest infection rates compared to population
+Select location,MAX(total_cases) as total_cases,AVG(population) as mean_population,(MAX(total_cases)/AVG(population)*100) as percentageinfected
+FROM [Portfolio Project]..CovidDeaths
+where continent is not null
+Group by location
+order by percentageinfected desc
+--OR
+Select location,MAX(total_cases) as highest_infection,population,MAX(total_cases)/population as percentageinfected
+FROM [Portfolio Project]..CovidDeaths
+where continent is not null
+Group by location,population
+order by percentageinfected desc
+
+--Looking at countries with highest death count per population
+Select  location,max(cast(total_deaths as int))as max_death,population,((max(cast(total_deaths as int))/population)*100)as death_percentage
+FROM ['Covid Deaths]
+where continent is not null
+Group by location,population
+order by death_percentage desc
+
+--GLOBAL Numbers
+Select continent,max(cast(total_deaths as int))as Total_Deaths,max(cast(total_cases as int)) as Total_Cases
+from [Portfolio Project]..CovidDeaths
+where continent is not null
+group by continent
+
+
+--% death in the world by date
+Select date,sum(new_cases) as totalcases,sum(cast(new_deaths as int))as totaldeaths,((sum(cast(new_deaths as int))/sum(new_cases))*100) as percentagedeath
+from [Portfolio Project]..CovidDeaths
+where continent is not null
+group by date
+order by date 
+
+--% of total deaths in the world
+Select sum(new_cases) as totalcases,sum(cast(new_deaths as int))as totaldeaths,((sum(cast(new_deaths as int))/sum(new_cases))*100) as percentagedeath
+from [Portfolio Project]..CovidDeaths
+where continent is not null
+ 
+
+--Join the coviddeath table with covidvaccination table
+SELECT *
+from [Portfolio Project]..CovidDeaths as deaths
+JOIN [Portfolio Project]..CovidVaccinations as jabs
+ ON deaths.date=jabs.date
+ AND deaths.location=jabs.location
+ where jabs.continent is not null
+
+ --What is the percentage people in the world who are vaccinated per day?
+ SELECT jabs.date,sum(cast(new_vaccinations as int)) as total_jabs,AVG(population) as mean_population,((sum(cast(new_vaccinations as int))/AVG(population))*100) as percentjabbed
+from [Portfolio Project]..CovidDeaths as deaths
+JOIN [Portfolio Project]..CovidVaccinations as jabs
+ ON deaths.date=jabs.date
+ AND deaths.location=jabs.location
+ where jabs.continent is not null
+ group by jabs.date
+ order by date
+
+--Looking at total population vs vaccinations
+SELECT deaths.continent,deaths.location,deaths.date,deaths.population,jabs.new_vaccinations,SUM(CONVERT(int,jabs.new_vaccinations)) OVER (Partition by deaths.location order by deaths.location,deaths.date) as RollingPeopleJabbed
+from [Portfolio Project]..CovidDeaths as deaths
+JOIN [Portfolio Project]..CovidVaccinations as jabs
+ ON deaths.date=jabs.date
+ AND deaths.location=jabs.location
+ where deaths.continent is not null AND deaths.location='India'
+ order by deaths.location,deaths.date
+ 
+ --Calculate total vaccination/total population by CommonTableExpression(CTE)
+ WITH PopulationvsVaccination(Continent,Location,Date,Population,New_vaccinations,RollingPeopleJabbed)
+ as
+ (
+ SELECT deaths.continent,deaths.location,deaths.date,deaths.population,jabs.new_vaccinations,SUM(CONVERT(int,jabs.new_vaccinations)) OVER (Partition by deaths.location order by deaths.location,deaths.date) as RollingPeopleJabbed
+from [Portfolio Project]..CovidDeaths as deaths
+JOIN [Portfolio Project]..CovidVaccinations as jabs
+ ON deaths.date=jabs.date
+ AND deaths.location=jabs.location
+ where deaths.continent is not null --AND deaths.location='India'
+ --order by deaths.location,deaths.date/ orderby cannot be here
+ )
+ SELECT *,((RollingPeopleJabbed/Population)*100) as Percentage_Jabbed
+ From PopulationvsVaccination
+
+
+ --We can get the same results using a Temp Table
+
+ DROP Table if exists #Percentage_of_people_vaccinated
+ Create Table #Percentage_of_people_vaccinated
+ (
+ Continent nvarchar(255),
+ Location nvarchar(255),
+ Date datetime,
+ Population numeric,
+ New_Vaccinations numeric,
+ RollingPeopleVaccinated numeric
+ )
+
+ INSERT into #Percentage_of_people_vaccinated
+ SELECT deaths.continent,deaths.location,deaths.date,deaths.population,jabs.new_vaccinations,SUM(CONVERT(int,jabs.new_vaccinations)) OVER (Partition by deaths.location order by deaths.location,deaths.date) as RollingPeopleJabbed
+from [Portfolio Project]..CovidDeaths as deaths
+JOIN [Portfolio Project]..CovidVaccinations as jabs
+ ON deaths.date=jabs.date
+ AND deaths.location=jabs.location
+ where deaths.continent is not null --AND deaths.location='India'
+ --order by deaths.location,deaths.date/ orderby cannot be here
+
+ SELECT *,((RollingPeopleVaccinated/Population)*100) as Percentage_Jabbed
+ FROM #Percentage_of_people_vaccinated
+
+--Create a view  of Percentage_of_people_vaccinated
+
+CREATE VIEW Rolling_people_jabbed
+as
+SELECT deaths.continent,deaths.location,deaths.date,deaths.population,jabs.new_vaccinations,SUM(CONVERT(int,jabs.new_vaccinations)) OVER (Partition by deaths.location order by deaths.location,deaths.date) as RollingPeopleJabbed
+from [Portfolio Project]..CovidDeaths as deaths
+JOIN [Portfolio Project]..CovidVaccinations as jabs
+ ON deaths.date=jabs.date
+ AND deaths.location=jabs.location
+ where deaths.continent is not null 
+
+ SELECT *
+ From Rolling_people_jabbed
